@@ -14,3 +14,16 @@ export function errorReply(msg: string): string {
 export function integer(n: number): string {
     return `:${n}\r\n`;
 }
+
+export function array(items: (string | null)[] | null): string {
+    if (items === null) return `*-1\r\n`;
+    let out = `*${items.length}\r\n`;
+    for (const item of items) {
+        out += bulkString(item);
+    }
+    return out;
+}
+
+export function wrongTypeReply(): string {
+    return `-WRONGTYPE Operation against a key holding the wrong kind of value\r\n`;
+}
