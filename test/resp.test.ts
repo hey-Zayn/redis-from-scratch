@@ -45,4 +45,24 @@ describe('RESP Parser', () => {
     it('returns null for incomplete buffer', () => {
         expect(parseRESP(Buffer.from('*1\r\n'))).toBeNull();
     });
+
+    it('correctly parses bulk strings with embedded CRLF', () => {
+        const valWithCrlf = 'hello\r\nworld';
+        const byteLen = Buffer.byteLength(valWithCrlf);
+        const buf = Buffer.from(`*2\r\n$3\r\nSET\r\n$${byteLen}\r\n${valWithCrlf}\r\n`);
+        const res = parseRESP(buf);
+        expect(res).not.toBeNull();
+        expect(res?.command).toEqual(['SET', valWithCrlf]);
+        expect(res?.consumed).toBe(buf.length);
+    });
+
+    it('correctly parses multi-byte UTF-8 characters and computes byte consumption', () => {
+        const utf8Val = '🔥🚀Redis';
+        const byteLen = Buffer.byteLength(utf8Val);
+        const buf = Buffer.from(`*2\r\n$4\r\nECHO\r\n$${byteLen}\r\n${utf8Val}\r\n`);
+        const res = parseRESP(buf);
+        expect(res).not.toBeNull();
+        expect(res?.command).toEqual(['ECHO', utf8Val]);
+        expect(res?.consumed).toBe(buf.length);
+    });
 });

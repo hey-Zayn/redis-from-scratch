@@ -102,6 +102,8 @@ export const saveCommand: CommandHandler = () => {
 export const bgsaveCommand: CommandHandler = () => {
     try {
         aofManager.saveSnapshot();
+        // NOTE: this is currently synchronous, identical to SAVE.
+        // True non-blocking snapshotting would require a worker_thread.
         return simpleString('Background saving started');
     } catch {
         return errorReply('failed to start background save');

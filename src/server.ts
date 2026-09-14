@@ -1,4 +1,5 @@
 import net from 'net';
+import fs from 'fs';
 import { parseRESP } from './resp/parser';
 import { errorReply } from './resp/serializer';
 import { dispatchCommand } from './commands';
@@ -67,14 +68,21 @@ const server = net.createServer((socket) => {
 // once for the whole server's lifetime, regardless of how many clients connect.
 setInterval(() => keyspace.sweepExpired(), 100);
 
-// Replay Append-Only File (AOF) on server startup to reconstruct state
+// Restore state on server startup: prefer AOF (has every write); fall back to snapshot if no AOF exists.
 try {
-    const replayed = aofManager.replay(dispatchCommand);
-    if (replayed > 0) {
-        console.log(`[AOF] Successfully replayed ${replayed} command(s). Keyspace restored.`);
+    if (fs.existsSync(aofManager.filePath)) {
+        const replayed = aofManager.replay(dispatchCommand);
+        if (replayed > 0) {
+            console.log(`[AOF] Successfully replayed ${replayed} command(s). Keyspace restored.`);
+        }
+    } else {
+        const loaded = aofManager.loadSnapshot();
+        if (loaded > 0) {
+            console.log(`[RDB] Restored ${loaded} key(s) from snapshot.`);
+        }
     }
 } catch (err) {
-    console.error('[AOF] Error during AOF replay:', err);
+    console.error('[Persistence] Error during startup restore:', err);
 }
 
 server.listen(PORT, () => console.log(`Listening on port ${PORT}`));
