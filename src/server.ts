@@ -3,18 +3,30 @@ import fs from 'fs';
 import { parseRESP } from './resp/parser';
 import { errorReply } from './resp/serializer';
 import { dispatchCommand } from './commands';
+import { ClientContext } from './commands/types';
+import { pubsubManager } from './pubsub';
 import { keyspace } from './store/keyspace';
 import { aofManager } from './store/persistence';
 
 const PORT = 6380;
+let nextClientId = 1;
 
 const server = net.createServer((socket) => {
-    console.log('Client connected');
+    const client: ClientContext = {
+        id: nextClientId++,
+        socket,
+        subscriptions: new Set(),
+        inMulti: false,
+        multiQueue: [],
+    };
+    console.log(`Client ${client.id} connected`);
 
     let buffer = Buffer.alloc(0);
 
-    socket.on('data', (data) => {
-        console.log('Raw bytes received:', data);
+    socket.on('data', (data: Buffer) => {
+        if (process.env.DEBUG) {
+            console.log('Raw bytes received:', data);
+        }
 
         // Accumulate incoming bytes — a command may arrive split across
         // multiple 'data' events, or multiple commands may arrive bundled together.
@@ -45,21 +57,35 @@ const server = net.createServer((socket) => {
             // buffered data (e.g. the start of the next command) in place.
             buffer = buffer.subarray(consumed);
 
-            const reply = dispatchCommand(command);
+            const reply = dispatchCommand(command, client);
             if (socket.writable) {
                 socket.write(reply);
+            }
+
+            if (command[0]?.toUpperCase() === 'QUIT') {
+                socket.end();
+                break;
             }
         }
     });
 
-    socket.on('end', () => console.log('Client disconnected'));
+    const cleanup = () => {
+        pubsubManager.removeClient(client);
+    };
+
+    socket.on('close', cleanup);
+    socket.on('end', () => {
+        cleanup();
+        console.log(`Client ${client.id} disconnected`);
+    });
     socket.on('error', (err: NodeJS.ErrnoException) => {
+        cleanup();
         if (err.code === 'ECONNRESET' || err.code === 'EPIPE') {
             // Client closed connection abruptly (e.g. redis-cli exited immediately)
-            console.log('Client connection reset');
+            console.log(`Client ${client.id} connection reset`);
             return;
         }
-        console.error('Socket error:', err);
+        console.error(`Socket error on client ${client.id}:`, err);
     });
 });
 

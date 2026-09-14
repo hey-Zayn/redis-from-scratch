@@ -24,6 +24,25 @@ export function array(items: (string | null)[] | null): string {
     return out;
 }
 
+export function rawArray(replies: string[] | null): string {
+    if (replies === null) return `*-1\r\n`;
+    let out = `*${replies.length}\r\n`;
+    for (const r of replies) {
+        out += r;
+    }
+    return out;
+}
+
+export function pubsubEvent(action: string, channel: string, data: string | number): string {
+    let out = `*3\r\n${bulkString(action)}${bulkString(channel)}`;
+    if (typeof data === 'number') {
+        out += integer(data);
+    } else {
+        out += bulkString(data);
+    }
+    return out;
+}
+
 export function wrongTypeReply(): string {
     return `-WRONGTYPE Operation against a key holding the wrong kind of value\r\n`;
 }

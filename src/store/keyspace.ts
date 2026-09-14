@@ -63,7 +63,7 @@ export class Keyspace {
             throw new WrongTypeError();
         }
 
-        const list = entry.data.value;
+        const list = entry.data.value as string[];
         for (const val of values) {
             list.unshift(val);
         }
@@ -79,7 +79,7 @@ export class Keyspace {
             throw new WrongTypeError();
         }
 
-        const list = entry.data.value;
+        const list = entry.data.value as string[];
         list.push(...values);
         return list.length;
     }
@@ -146,7 +146,7 @@ export class Keyspace {
             throw new WrongTypeError();
         }
 
-        const map = entry.data.value;
+        const map = entry.data.value as Map<string, string>;
         let addedCount = 0;
         for (const [field, val] of fieldValues) {
             if (!map.has(field)) {
@@ -220,7 +220,7 @@ export class Keyspace {
             throw new WrongTypeError();
         }
 
-        const set = entry.data.value;
+        const set = entry.data.value as Set<string>;
         let added = 0;
         for (const member of members) {
             if (!set.has(member)) {

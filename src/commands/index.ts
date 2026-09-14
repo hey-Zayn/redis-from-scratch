@@ -1,4 +1,4 @@
-import { CommandHandler } from './types';
+import { CommandHandler, ClientContext } from './types';
 import {
     pingCommand,
     echoCommand,
@@ -36,11 +36,21 @@ import {
     sremCommand,
     scardCommand,
 } from './sets';
-import { errorReply, wrongTypeReply } from '../resp/serializer';
+import {
+    subscribeCommand,
+    unsubscribeCommand,
+    publishCommand,
+} from './pubsub';
+import {
+    multiCommand,
+    execCommand,
+    discardCommand,
+} from './transactions';
+import { errorReply, wrongTypeReply, simpleString } from '../resp/serializer';
 import { WrongTypeError } from '../store/keyspace';
 import { aofManager } from '../store/persistence';
 
-const registry: Record<string, CommandHandler> = {
+export const registry: Record<string, CommandHandler> = {
     // System / Strings / Persistence
     PING: pingCommand,
     ECHO: echoCommand,
@@ -56,6 +66,7 @@ const registry: Record<string, CommandHandler> = {
     SAVE: saveCommand,
     BGSAVE: bgsaveCommand,
     BGREWRITEAOF: bgrewriteaofCommand,
+    QUIT: () => simpleString('OK'),
 
     // Lists
     LPUSH: lpushCommand,
@@ -77,9 +88,19 @@ const registry: Record<string, CommandHandler> = {
     SISMEMBER: sismemberCommand,
     SREM: sremCommand,
     SCARD: scardCommand,
+
+    // Pub/Sub
+    SUBSCRIBE: subscribeCommand,
+    UNSUBSCRIBE: unsubscribeCommand,
+    PUBLISH: publishCommand,
+
+    // Transactions
+    MULTI: multiCommand,
+    EXEC: (args, ctx) => execCommand(args, ctx, executeDirect),
+    DISCARD: discardCommand,
 };
 
-export function dispatchCommand(command: string[]): string {
+export function executeDirect(command: string[], context?: ClientContext): string {
     const cmd = command[0]?.toUpperCase();
     if (!cmd) {
         return errorReply('empty command');
@@ -92,7 +113,7 @@ export function dispatchCommand(command: string[]): string {
 
     try {
         const args = command.slice(1);
-        const reply = handler(args);
+        const reply = handler(args, context);
         if (!reply.startsWith('-ERR') && !reply.startsWith('-WRONGTYPE')) {
             aofManager.appendCommand(command);
         }
@@ -104,4 +125,28 @@ export function dispatchCommand(command: string[]): string {
         console.error('Command handling error:', e);
         return errorReply('internal error');
     }
+}
+
+export function dispatchCommand(command: string[], context?: ClientContext): string {
+    const cmd = command[0]?.toUpperCase();
+    if (!cmd) {
+        return errorReply('empty command');
+    }
+
+    if (context?.inMulti) {
+        if (cmd === 'EXEC') {
+            return execCommand(command.slice(1), context, executeDirect);
+        }
+        if (cmd === 'DISCARD') {
+            return discardCommand(command.slice(1), context);
+        }
+        if (cmd === 'MULTI') {
+            return errorReply('MULTI calls can not be nested');
+        }
+        // Commands queued inside MULTI
+        context.multiQueue.push(command);
+        return simpleString('QUEUED');
+    }
+
+    return executeDirect(command, context);
 }
