@@ -312,9 +312,17 @@ export class Keyspace {
     }
 
     expire(key: string, ttlSeconds: number): number {
+        return this.pexpireat(key, Date.now() + ttlSeconds * 1000);
+    }
+
+    pexpireat(key: string, timestampMs: number): number {
         const entry = this.getValidEntry(key);
         if (!entry) return 0;
-        entry.expiresAt = Date.now() + ttlSeconds * 1000;
+        if (timestampMs <= Date.now()) {
+            this.store.delete(key);
+            return 1;
+        }
+        entry.expiresAt = timestampMs;
         return 1;
     }
 
@@ -348,6 +356,27 @@ export class Keyspace {
 
     clear(): void {
         this.store.clear();
+    }
+
+    dumpAll(): [string, StoredEntry][] {
+        const result: [string, StoredEntry][] = [];
+        const now = Date.now();
+        for (const [key, entry] of this.store.entries()) {
+            if (entry.expiresAt !== null && now >= entry.expiresAt) {
+                this.store.delete(key);
+                continue;
+            }
+            result.push([key, entry]);
+        }
+        return result;
+    }
+
+    loadEntry(key: string, entry: StoredEntry): void {
+        const now = Date.now();
+        if (entry.expiresAt !== null && now >= entry.expiresAt) {
+            return;
+        }
+        this.store.set(key, entry);
     }
 }
 

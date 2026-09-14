@@ -10,6 +10,10 @@ import {
     ttlCommand,
     persistCommand,
     typeCommand,
+    pexpireatCommand,
+    saveCommand,
+    bgsaveCommand,
+    bgrewriteaofCommand,
 } from './strings';
 import {
     lpushCommand,
@@ -34,9 +38,10 @@ import {
 } from './sets';
 import { errorReply, wrongTypeReply } from '../resp/serializer';
 import { WrongTypeError } from '../store/keyspace';
+import { aofManager } from '../store/persistence';
 
 const registry: Record<string, CommandHandler> = {
-    // System / Strings
+    // System / Strings / Persistence
     PING: pingCommand,
     ECHO: echoCommand,
     SET: setCommand,
@@ -47,6 +52,10 @@ const registry: Record<string, CommandHandler> = {
     TTL: ttlCommand,
     PERSIST: persistCommand,
     TYPE: typeCommand,
+    PEXPIREAT: pexpireatCommand,
+    SAVE: saveCommand,
+    BGSAVE: bgsaveCommand,
+    BGREWRITEAOF: bgrewriteaofCommand,
 
     // Lists
     LPUSH: lpushCommand,
@@ -83,7 +92,11 @@ export function dispatchCommand(command: string[]): string {
 
     try {
         const args = command.slice(1);
-        return handler(args);
+        const reply = handler(args);
+        if (!reply.startsWith('-ERR') && !reply.startsWith('-WRONGTYPE')) {
+            aofManager.appendCommand(command);
+        }
+        return reply;
     } catch (e) {
         if (e instanceof WrongTypeError) {
             return wrongTypeReply();

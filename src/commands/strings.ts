@@ -1,5 +1,6 @@
 import { CommandHandler } from './types';
 import { keyspace } from '../store/keyspace';
+import { aofManager } from '../store/persistence';
 import { simpleString, bulkString, errorReply, integer } from '../resp/serializer';
 
 export const pingCommand: CommandHandler = (args) => {
@@ -78,4 +79,40 @@ export const typeCommand: CommandHandler = (args) => {
         return errorReply("wrong number of arguments for 'type' command");
     }
     return simpleString(keyspace.type(key));
+};
+
+export const pexpireatCommand: CommandHandler = (args) => {
+    const [key, timestampMsStr] = args;
+    const timestampMs = Number(timestampMsStr);
+    if (key === undefined || timestampMsStr === undefined || isNaN(timestampMs)) {
+        return errorReply("wrong number of arguments for 'pexpireat' command");
+    }
+    return integer(keyspace.pexpireat(key, timestampMs));
+};
+
+export const saveCommand: CommandHandler = () => {
+    try {
+        aofManager.saveSnapshot();
+        return simpleString('OK');
+    } catch {
+        return errorReply('failed to save snapshot');
+    }
+};
+
+export const bgsaveCommand: CommandHandler = () => {
+    try {
+        aofManager.saveSnapshot();
+        return simpleString('Background saving started');
+    } catch {
+        return errorReply('failed to start background save');
+    }
+};
+
+export const bgrewriteaofCommand: CommandHandler = () => {
+    try {
+        aofManager.rewrite(keyspace);
+        return simpleString('Background append only file rewriting started');
+    } catch {
+        return errorReply('failed to rewrite AOF');
+    }
 };

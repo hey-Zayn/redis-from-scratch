@@ -3,6 +3,7 @@ import { parseRESP } from './resp/parser';
 import { errorReply } from './resp/serializer';
 import { dispatchCommand } from './commands';
 import { keyspace } from './store/keyspace';
+import { aofManager } from './store/persistence';
 
 const PORT = 6380;
 
@@ -66,4 +67,22 @@ const server = net.createServer((socket) => {
 // once for the whole server's lifetime, regardless of how many clients connect.
 setInterval(() => keyspace.sweepExpired(), 100);
 
+// Replay Append-Only File (AOF) on server startup to reconstruct state
+try {
+    const replayed = aofManager.replay(dispatchCommand);
+    if (replayed > 0) {
+        console.log(`[AOF] Successfully replayed ${replayed} command(s). Keyspace restored.`);
+    }
+} catch (err) {
+    console.error('[AOF] Error during AOF replay:', err);
+}
+
 server.listen(PORT, () => console.log(`Listening on port ${PORT}`));
+
+process.on('SIGINT', () => {
+    console.log('\nShutting down server...');
+    server.close(() => {
+        console.log('Server shut down cleanly.');
+        process.exit(0);
+    });
+});
